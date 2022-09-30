@@ -1,8 +1,9 @@
 {
-  "name": "serverless-plugin-typescript",
-  "version": "2.1.2",
+  "name": "@vectorjohn/serverless-plugin-typescript",
+  "version": "2.1.3",
   "license": "MIT",
   "main": "dist/src/index.js",
+  "publishConfig": { "registry": "https://npm.pkg.github.com/" },
   "files": [
     "dist",
     "package.json",
@@ -41,7 +42,10 @@
       }
     ]
   },
-  "repository": "serverless/serverless-plugin-typescript",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:vectorjohn/serverless-plugin-typescript.git"
+  },
   "keywords": [
     "serverless",
     "serverless plugin",
