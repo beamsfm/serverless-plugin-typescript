@@ -77,7 +77,7 @@ export class TypeScriptPlugin {
         await this.copyDependencies()
         if (this.isWatching) {
           emitedFiles.forEach(filename => {
-            const module = require.resolve(path.resolve(this.originalServicePath, filename))
+            const module = require.resolve(path.resolve(this.getRealServicePath(), filename))
             delete require.cache[module]
           })
         }
@@ -114,7 +114,7 @@ export class TypeScriptPlugin {
 
   get rootFileNames() {
     return typescript.extractFileNames(
-      this.originalServicePath,
+      this.getRealServicePath(),
       this.serverless.service.provider.name,
       this.functions
     )
@@ -145,7 +145,7 @@ export class TypeScriptPlugin {
 
     this.isWatching = true
     await new Promise((resolve, reject) => {
-      watchFiles(this.rootFileNames, this.originalServicePath, () => {
+      watchFiles(this.rootFileNames, this.getRealServicePath(), () => {
         this.serverless.pluginManager.spawn('invoke:local').catch(reject)
       })
     })
@@ -159,7 +159,7 @@ export class TypeScriptPlugin {
     this.serverless.cli.log(`Watching typescript files...`)
 
     this.isWatching = true
-    watchFiles(this.rootFileNames, this.originalServicePath, this.compileTs.bind(this))
+    watchFiles(this.rootFileNames, this.getRealServicePath(), this.compileTs.bind(this))
   }
 
   async compileTs(): Promise<string[]> {
@@ -168,9 +168,10 @@ export class TypeScriptPlugin {
 
     if (!this.originalServicePath) {
       // Save original service path and functions
-      this.originalServicePath = this.serverless.config.servicePath
+      // console.error('HEYO! ' + JSON.stringify({v: this.serverless['version'], serverlessPath: this.serverless.config['serverlessPath'], serviceDir: this.serverless.config['serviceDir'], slsServiceDir: this.serverless['serviceDir'], top: Object.keys(this.serverless), conf: Object.keys(this.serverless.config)}))
+      this.originalServicePath = this.getServicePath()
       // Fake service path so that serverless will know what to zip
-      this.serverless.config.servicePath = path.join(this.originalServicePath, BUILD_FOLDER)
+      this.setServicePath(path.join(this.originalServicePath, BUILD_FOLDER))
     }
     let tsConfigFileLocation: string | undefined
     if (
@@ -180,7 +181,7 @@ export class TypeScriptPlugin {
       tsConfigFileLocation = this.serverless.service.custom.serverlessPluginTypescript.tsConfigFileLocation
     }
     const tsconfig = typescript.getTypescriptConfig(
-      this.originalServicePath,
+      this.getRealServicePath(),
       tsConfigFileLocation,
       this.isWatching ? null : this.serverless.cli
     )
@@ -189,14 +190,45 @@ export class TypeScriptPlugin {
 
     const emitedFiles = await typescript.run(this.rootFileNames, tsconfig)
     this.serverless.cli.log('Typescript compiled.')
+    // this.setServicePath(this.originalServicePath)
+    // this.originalServicePath = null
     return emitedFiles
   }
 
-  /** Link or copy extras such as node_modules or package.patterns definitions */
+  private getRealServicePath() {
+    return this.originalServicePath || this.getServicePath()
+  }
+
+  private getServicePath(): string {
+    const path = this.serverless.config.servicePath || this.serverless.config.serviceDir
+    // const path = 'servicePath' in this.serverless.config ? this.serverless.config.servicePath : this.serverless.config.serviceDir
+    if (!path) {
+      throw new Error('Could not find serverless serviceDir or servicePath')
+    }
+    return path
+  }
+
+  private setServicePath(value: string) {
+    this.serverless.config.serviceDir = value
+    this.serverless.config.servicePath = value
+    // if ('serviceDir' in this.serverless.config) {
+    //   // serverless V3 config
+    // }
+    // else {
+    //   // Serverless <V3 config
+    // }
+  }
+
+  /**
+   * ~Link or~ copy extras such as node_modules or package.patterns definitions
+   * TODO: this says link or copy, it does not attempt to link. Should it? Or is the comment out of date?
+   **/
   async copyExtras() {
+
     const { service } = this.serverless
 
     const patterns = [...(service.package.include || []), ...(service.package.patterns || [])]
+    this.serverless.cli.log(`TS: copyExtras: ${JSON.stringify(patterns)}`)
     // include any "extras" from the "include" section
     if (patterns.length > 0) {
       const files = await globby(patterns)
@@ -222,6 +254,7 @@ export class TypeScriptPlugin {
    * @param isPackaging Provided if serverless is packaging the service for deployment
    */
   async copyDependencies(isPackaging = false) {
+    this.serverless.cli.log('TS: copyDependencies')
     const outPkgPath = path.resolve(path.join(BUILD_FOLDER, 'package.json'))
     const outModulesPath = path.resolve(path.join(BUILD_FOLDER, 'node_modules'))
 
@@ -252,24 +285,27 @@ export class TypeScriptPlugin {
   async moveArtifacts(): Promise<void> {
     const { service } = this.serverless
 
+    this.serverless.cli.log('TS: moveArtifacts .serverless')
     await fs.copy(
-      path.join(this.originalServicePath, BUILD_FOLDER, SERVERLESS_FOLDER),
-      path.join(this.originalServicePath, SERVERLESS_FOLDER)
+      path.join(this.getRealServicePath(), BUILD_FOLDER, SERVERLESS_FOLDER),
+      path.join(this.getRealServicePath(), SERVERLESS_FOLDER)
     )
+    this.serverless.cli.log('TS: post-copy')
 
     const layerNames = service.getAllLayers()
     layerNames.forEach(name => {
       service.layers[name].package.artifact = path.join(
-        this.originalServicePath,
+        this.getRealServicePath(),
         SERVERLESS_FOLDER,
         path.basename(service.layers[name].package.artifact)
       )
+      this.serverless.cli.log('TS: ' + name + ' ' + service.layers[name].package.artifact)
     })
 
     if (this.options.function) {
       const fn = service.functions[this.options.function]
       fn.package.artifact = path.join(
-        this.originalServicePath,
+        this.getRealServicePath(),
         SERVERLESS_FOLDER,
         path.basename(fn.package.artifact)
       )
@@ -280,27 +316,30 @@ export class TypeScriptPlugin {
       const functionNames = service.getAllFunctions()
       functionNames.forEach(name => {
         service.functions[name].package.artifact = path.join(
-          this.originalServicePath,
+          this.getRealServicePath(),
           SERVERLESS_FOLDER,
           path.basename(service.functions[name].package.artifact)
         )
+        this.serverless.cli.log(`TS: ${name} - ${service.functions[name].package.artifact}`)
       })
       return
     }
 
     service.package.artifact = path.join(
-      this.originalServicePath,
+      this.getRealServicePath(),
       SERVERLESS_FOLDER,
       path.basename(service.package.artifact)
     )
+    this.serverless.cli.log(`TS: service.package.artifact: ${service.package.artifact}`)
   }
 
   async cleanup(): Promise<void> {
+    this.serverless.cli.log('TS: cleanup')
     await this.moveArtifacts()
     // Restore service path
-    this.serverless.config.servicePath = this.originalServicePath
+    this.setServicePath(this.originalServicePath)
     // Remove temp build folder
-    fs.removeSync(path.join(this.originalServicePath, BUILD_FOLDER))
+    fs.removeSync(path.join(this.getServicePath(), BUILD_FOLDER))
   }
 
   /**
