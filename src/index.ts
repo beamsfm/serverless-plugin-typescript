@@ -276,6 +276,23 @@ export class TypeScriptPlugin {
     if (!fs.existsSync(outPkgPath)) {
       await this.linkOrCopy(path.resolve('package.json'), outPkgPath, 'file')
     }
+
+    const { service } = this.serverless
+    if (service.package.individually) {
+      for (const [_name, functionObject] of Object.entries(service.functions)) {
+        const oldHome = functionObject.package.artifact
+        if (!oldHome || path.isAbsolute(oldHome)) {
+          continue
+        }
+        const newHome = path.join(
+          path.join(this.getRealServicePath(), BUILD_FOLDER, SERVERLESS_FOLDER),
+          path.basename(oldHome)
+        )
+        this.serverless.cli.log(`TS: copying ${oldHome} to ${newHome}`)
+        await fs.copy(oldHome, newHome)
+        functionObject.package.artifact = newHome
+      }
+    }
   }
 
   /**
@@ -312,6 +329,7 @@ export class TypeScriptPlugin {
       return
     }
 
+    // It seems like this does nothing because the paths are already set so they point inside the .serverless folder.
     if (service.package.individually) {
       const functionNames = service.getAllFunctions()
       functionNames.forEach(name => {
