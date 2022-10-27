@@ -168,7 +168,6 @@ export class TypeScriptPlugin {
 
     if (!this.originalServicePath) {
       // Save original service path and functions
-      // console.error('HEYO! ' + JSON.stringify({v: this.serverless['version'], serverlessPath: this.serverless.config['serverlessPath'], serviceDir: this.serverless.config['serviceDir'], slsServiceDir: this.serverless['serviceDir'], top: Object.keys(this.serverless), conf: Object.keys(this.serverless.config)}))
       this.originalServicePath = this.getServicePath()
       // Fake service path so that serverless will know what to zip
       this.setServicePath(path.join(this.originalServicePath, BUILD_FOLDER))
@@ -190,8 +189,6 @@ export class TypeScriptPlugin {
 
     const emitedFiles = await typescript.run(this.rootFileNames, tsconfig)
     this.serverless.cli.log('Typescript compiled.')
-    // this.setServicePath(this.originalServicePath)
-    // this.originalServicePath = null
     return emitedFiles
   }
 
@@ -201,7 +198,6 @@ export class TypeScriptPlugin {
 
   private getServicePath(): string {
     const path = this.serverless.config.servicePath || this.serverless.config.serviceDir
-    // const path = 'servicePath' in this.serverless.config ? this.serverless.config.servicePath : this.serverless.config.serviceDir
     if (!path) {
       throw new Error('Could not find serverless serviceDir or servicePath')
     }
@@ -211,12 +207,6 @@ export class TypeScriptPlugin {
   private setServicePath(value: string) {
     this.serverless.config.serviceDir = value
     this.serverless.config.servicePath = value
-    // if ('serviceDir' in this.serverless.config) {
-    //   // serverless V3 config
-    // }
-    // else {
-    //   // Serverless <V3 config
-    // }
   }
 
   /**
@@ -228,7 +218,6 @@ export class TypeScriptPlugin {
     const { service } = this.serverless
 
     const patterns = [...(service.package.include || []), ...(service.package.patterns || [])]
-    this.serverless.cli.log(`TS: copyExtras: ${JSON.stringify(patterns)}`)
     // include any "extras" from the "include" section
     if (patterns.length > 0) {
       const files = await globby(patterns)
@@ -254,7 +243,6 @@ export class TypeScriptPlugin {
    * @param isPackaging Provided if serverless is packaging the service for deployment
    */
   async copyDependencies(isPackaging = false) {
-    this.serverless.cli.log('TS: copyDependencies')
     const outPkgPath = path.resolve(path.join(BUILD_FOLDER, 'package.json'))
     const outModulesPath = path.resolve(path.join(BUILD_FOLDER, 'node_modules'))
 
@@ -288,7 +276,6 @@ export class TypeScriptPlugin {
           path.join(this.getRealServicePath(), BUILD_FOLDER, SERVERLESS_FOLDER),
           path.basename(oldHome)
         )
-        this.serverless.cli.log(`TS: copying ${oldHome} to ${newHome}`)
         await fs.copy(oldHome, newHome)
         functionObject.package.artifact = newHome
       }
@@ -302,12 +289,10 @@ export class TypeScriptPlugin {
   async moveArtifacts(): Promise<void> {
     const { service } = this.serverless
 
-    this.serverless.cli.log('TS: moveArtifacts .serverless')
     await fs.copy(
       path.join(this.getRealServicePath(), BUILD_FOLDER, SERVERLESS_FOLDER),
       path.join(this.getRealServicePath(), SERVERLESS_FOLDER)
     )
-    this.serverless.cli.log('TS: post-copy')
 
     const layerNames = service.getAllLayers()
     layerNames.forEach(name => {
@@ -316,7 +301,6 @@ export class TypeScriptPlugin {
         SERVERLESS_FOLDER,
         path.basename(service.layers[name].package.artifact)
       )
-      this.serverless.cli.log('TS: ' + name + ' ' + service.layers[name].package.artifact)
     })
 
     if (this.options.function) {
@@ -338,7 +322,6 @@ export class TypeScriptPlugin {
           SERVERLESS_FOLDER,
           path.basename(service.functions[name].package.artifact)
         )
-        this.serverless.cli.log(`TS: ${name} - ${service.functions[name].package.artifact}`)
       })
       return
     }
@@ -348,11 +331,9 @@ export class TypeScriptPlugin {
       SERVERLESS_FOLDER,
       path.basename(service.package.artifact)
     )
-    this.serverless.cli.log(`TS: service.package.artifact: ${service.package.artifact}`)
   }
 
   async cleanup(): Promise<void> {
-    this.serverless.cli.log('TS: cleanup')
     await this.moveArtifacts()
     // Restore service path
     this.setServicePath(this.originalServicePath)
